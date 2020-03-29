@@ -16,7 +16,7 @@
 package com.alibaba.nacos.config.server.service;
 
 import com.alibaba.nacos.config.server.enums.FileTypeEnum;
-import com.alibaba.nacos.config.server.exception.NacosException;
+import com.alibaba.nacos.api.exception.NacosException;
 import com.alibaba.nacos.config.server.model.*;
 import com.alibaba.nacos.config.server.utils.LogUtil;
 import com.alibaba.nacos.config.server.utils.MD5;
@@ -72,7 +72,7 @@ public class PersistService {
 
     private DataSourceService dataSourceService;
 
-    private static final String SQL_FIND_ALL_CONFIG_INFO = "select data_id,group_id,tenant_id,app_name,content,type from config_info";
+    private static final String SQL_FIND_ALL_CONFIG_INFO = "select id,data_id,group_id,tenant_id,app_name,content,type,md5,gmt_create,gmt_modified,src_user,src_ip,c_desc,c_use,effect,c_schema from config_info";
 
     private static final String SQL_TENANT_INFO_COUNT_BY_TENANT_ID = "select count(1) from tenant_info where tenant_id = ?";
 
@@ -113,6 +113,7 @@ public class PersistService {
             info.setGroup(rs.getString("group_id"));
             info.setTenant(rs.getString("tenant_id"));
             info.setAppName(rs.getString("app_name"));
+            info.setType(rs.getString("type"));
 
             try {
                 info.setContent(rs.getString("content"));
@@ -232,6 +233,11 @@ public class PersistService {
             }
             try {
                 info.setId(rs.getLong("ID"));
+            } catch (SQLException e) {
+                // ignore
+            }
+            try {
+                info.setType(rs.getString("type"));
             } catch (SQLException e) {
                 // ignore
             }
@@ -865,7 +871,7 @@ public class PersistService {
                     ps.setString(index++, dataId);
                     ps.setString(index++, group);
                     ps.setString(index++, tenantTmp);
-                    ps.setString(index++, datumId);
+                    ps.setString(index, datumId);
                 }
             });
         } catch (CannotGetJdbcConnectionException e) {
@@ -888,7 +894,7 @@ public class PersistService {
                     int index = 1;
                     ps.setString(index++, dataId);
                     ps.setString(index++, group);
-                    ps.setString(index++, tenantTmp);
+                    ps.setString(index, tenantTmp);
                 }
             });
         } catch (CannotGetJdbcConnectionException e) {
@@ -993,7 +999,7 @@ public class PersistService {
             if (isPublishOk == null) {
                 return false;
             }
-            return isPublishOk.booleanValue();
+            return isPublishOk;
         } catch (TransactionException e) {
             fatalLog.error("[db-error] " + e.toString(), e);
             return false;
@@ -1035,7 +1041,7 @@ public class PersistService {
             if (isReplaceOk == null) {
                 return false;
             }
-            return isReplaceOk.booleanValue();
+            return isReplaceOk;
         } catch (TransactionException e) {
             fatalLog.error("[db-error] " + e.toString(), e);
             return false;
@@ -1325,7 +1331,7 @@ public class PersistService {
         final String appName = configAdvanceInfo == null ? null : (String) configAdvanceInfo.get("appName");
         final String configTags = configAdvanceInfo == null ? null : (String) configAdvanceInfo.get("config_tags");
         String sqlCount = "select count(*) from config_info";
-        String sql = "select ID,data_id,group_id,tenant_id,app_name,content from config_info";
+        String sql = "select ID,data_id,group_id,tenant_id,app_name,content,type from config_info";
         StringBuilder where = new StringBuilder(" where ");
         List<String> paramList = new ArrayList<String>();
         paramList.add(tenantTmp);
@@ -1944,7 +1950,7 @@ public class PersistService {
 
     public Page<ConfigInfoWrapper> findAllConfigInfoFragment(final long lastMaxId, final int pageSize) {
         String select
-            = "SELECT id,data_id,group_id,tenant_id,app_name,content,md5,gmt_modified from config_info where id > ? "
+            = "SELECT id,data_id,group_id,tenant_id,app_name,content,md5,gmt_modified,type from config_info where id > ? "
             + "order by id asc limit ?,?";
         PaginationHelper<ConfigInfoWrapper> helper = new PaginationHelper<ConfigInfoWrapper>();
         try {
@@ -2848,7 +2854,7 @@ public class PersistService {
                 sql.append(", ");
             }
             sql.append("?");
-            paramList.add(Long.valueOf(tagArr[i]));
+            paramList.add(Long.parseLong(tagArr[i]));
         }
         sql.append(") ");
         try {
@@ -2927,8 +2933,8 @@ public class PersistService {
         final String tenantTmp = StringUtils.isBlank(tenant) ? StringUtils.EMPTY : tenant;
         try {
             return this.jt.queryForObject(
-                "SELECT ID,data_id,group_id,tenant_id,app_name,content,md5 FROM config_info WHERE data_id=? AND group_id=? AND tenant_id=?",
-                new Object[]{dataId, group, tenantTmp}, CONFIG_INFO_ROW_MAPPER);
+                "SELECT ID,data_id,group_id,tenant_id,app_name,content,md5,type FROM config_info WHERE data_id=? AND group_id=? AND tenant_id=?",
+                new Object[] {dataId, group, tenantTmp}, CONFIG_INFO_ROW_MAPPER);
         } catch (EmptyResultDataAccessException e) { // 表明数据不存在, 返回null
             return null;
         } catch (CannotGetJdbcConnectionException e) {
@@ -2957,7 +2963,7 @@ public class PersistService {
                 sql.append(", ");
             }
             sql.append("?");
-            paramList.add(Long.valueOf(tagArr[i]));
+            paramList.add(Long.parseLong(tagArr[i]));
         }
         sql.append(") ");
         try {
@@ -3231,36 +3237,6 @@ public class PersistService {
         }
     }
 
-    public User findUserByUsername(String username) {
-        String sql = "SELECT username,password FROM users WHERE username=? ";
-        try {
-            return this.jt.queryForObject(sql, new Object[]{username}, USER_ROW_MAPPER);
-        } catch (CannotGetJdbcConnectionException e) {
-            fatalLog.error("[db-error] " + e.toString(), e);
-            throw e;
-        } catch (EmptyResultDataAccessException e) {
-            return null;
-        } catch (Exception e) {
-            fatalLog.error("[db-other-error]" + e.getMessage(), e);
-            throw new RuntimeException(e);
-        }
-    }
-
-    /**
-     * 更新用户密码
-     */
-    public void updateUserPassword(String username, String password) {
-        try {
-            jt.update(
-                "UPDATE users SET password = ? WHERE username=?",
-                password, username);
-        } catch (CannotGetJdbcConnectionException e) {
-            fatalLog.error("[db-error] " + e.toString(), e);
-            throw e;
-        }
-    }
-
-
     private List<ConfigInfo> convertDeletedConfig(List<Map<String, Object>> list) {
         List<ConfigInfo> configs = new ArrayList<ConfigInfo>();
         for (Map<String, Object> map : list) {
@@ -3419,7 +3395,7 @@ public class PersistService {
      * @param group
      * @return Collection of ConfigInfo objects
      */
-    public List<ConfigInfo> findAllConfigInfo4Export(final String dataId, final String group, final String tenant,
+    public List<ConfigAllInfo> findAllConfigInfo4Export(final String dataId, final String group, final String tenant,
                                                      final String appName, final List<Long> ids) {
         String tenantTmp = StringUtils.isBlank(tenant) ? StringUtils.EMPTY : tenant;
         StringBuilder where = new StringBuilder(" where ");
@@ -3451,7 +3427,7 @@ public class PersistService {
             }
         }
         try {
-            return this.jt.query(SQL_FIND_ALL_CONFIG_INFO + where, paramList.toArray(), CONFIG_INFO_ROW_MAPPER);
+            return this.jt.query(SQL_FIND_ALL_CONFIG_INFO + where, paramList.toArray(), CONFIG_ALL_INFO_ROW_MAPPER);
         } catch (CannotGetJdbcConnectionException e) {
             fatalLog.error("[db-error] " + e.toString(), e);
             throw e;
@@ -3466,7 +3442,7 @@ public class PersistService {
      * failData: import failed data (only with abort for the same configs)
      * skipData: data skipped at import  (only with skip for the same configs)
      */
-    public Map<String, Object> batchInsertOrUpdate(List<ConfigInfo> configInfoList, String srcUser, String srcIp,
+    public Map<String, Object> batchInsertOrUpdate(List<ConfigAllInfo> configInfoList, String srcUser, String srcIp,
                                                    Map<String, Object> configAdvanceInfo, Timestamp time, boolean notify, SameConfigPolicy policy) throws NacosException {
         int succCount = 0;
         int skipCount = 0;
@@ -3474,7 +3450,7 @@ public class PersistService {
         List<Map<String, String>> skipData = null;
 
         for (int i = 0; i < configInfoList.size(); i++) {
-            ConfigInfo configInfo = configInfoList.get(i);
+            ConfigAllInfo configInfo = configInfoList.get(i);
             try {
                 ParamUtils.checkParam(configInfo.getDataId(), configInfo.getGroup(), "datumId", configInfo.getContent());
             } catch (NacosException e) {
@@ -3484,14 +3460,16 @@ public class PersistService {
             ConfigInfo configInfo2Save = new ConfigInfo(configInfo.getDataId(), configInfo.getGroup(),
                 configInfo.getTenant(), configInfo.getAppName(), configInfo.getContent());
 
-            // simple judgment of file type based on suffix
-            String type = null;
-            if (configInfo.getDataId().contains(SPOT)) {
-                String extName = configInfo.getDataId().substring(configInfo.getDataId().lastIndexOf(SPOT) + 1).toLowerCase();
-                try {
-                    type = FileTypeEnum.valueOf(extName).getFileType();
-                } catch (Exception ex) {
-                    type = FileTypeEnum.TEXT.getFileType();
+            String type = configInfo.getType();
+            if (StringUtils.isBlank(type)) {
+                // simple judgment of file type based on suffix
+                if (configInfo.getDataId().contains(SPOT)) {
+                    String extName = configInfo.getDataId().substring(configInfo.getDataId().lastIndexOf(SPOT) + 1).toUpperCase();
+                    try {
+                        type = FileTypeEnum.valueOf(extName.toUpperCase()).getFileType();
+                    } catch (Exception ex) {
+                        type = FileTypeEnum.TEXT.getFileType();
+                    }
                 }
             }
             if (configAdvanceInfo == null) {
@@ -3554,9 +3532,7 @@ public class PersistService {
      */
     public int tenantInfoCountByTenantId(String tenantId) {
         Assert.hasText(tenantId, "tenantId can not be null");
-        List<String> paramList = new ArrayList<>();
-        paramList.add(tenantId);
-        Integer result = this.jt.queryForObject(SQL_TENANT_INFO_COUNT_BY_TENANT_ID, paramList.toArray(), Integer.class);
+        Integer result = this.jt.queryForObject(SQL_TENANT_INFO_COUNT_BY_TENANT_ID, new String[]{tenantId}, Integer.class);
         if (result == null) {
             return 0;
         }
@@ -3566,7 +3542,7 @@ public class PersistService {
 
     static final TenantInfoRowMapper TENANT_INFO_ROW_MAPPER = new TenantInfoRowMapper();
 
-    static final UserRowMapper USER_ROW_MAPPER = new UserRowMapper();
+    protected static final UserRowMapper USER_ROW_MAPPER = new UserRowMapper();
 
     static final ConfigInfoWrapperRowMapper CONFIG_INFO_WRAPPER_ROW_MAPPER = new ConfigInfoWrapperRowMapper();
 
@@ -3599,7 +3575,7 @@ public class PersistService {
 
     private static String PATTERN_STR = "*";
     private final static int QUERY_LIMIT_SIZE = 50;
-    private JdbcTemplate jt;
-    private TransactionTemplate tjt;
+    protected JdbcTemplate jt;
+    protected TransactionTemplate tjt;
 
 }
