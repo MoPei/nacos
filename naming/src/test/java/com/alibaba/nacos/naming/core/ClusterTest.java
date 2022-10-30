@@ -18,16 +18,19 @@ package com.alibaba.nacos.naming.core;
 
 import com.alibaba.nacos.api.naming.pojo.healthcheck.impl.Http;
 import com.alibaba.nacos.common.utils.JacksonUtils;
+import com.alibaba.nacos.sys.env.EnvUtil;
 import com.alibaba.nacos.sys.utils.ApplicationUtils;
 import com.alibaba.nacos.naming.misc.SwitchDomain;
 import com.alibaba.nacos.naming.misc.SwitchDomain.TcpHealthParams;
 
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.springframework.context.ConfigurableApplicationContext;
+import org.springframework.mock.env.MockEnvironment;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -52,6 +55,7 @@ public class ClusterTest {
     
     @Before
     public void before() {
+        EnvUtil.setEnvironment(new MockEnvironment());
         ApplicationUtils.injectContext(context);
         when(context.getBean(SwitchDomain.class)).thenReturn(switchDomain);
         when(switchDomain.getTcpHealthParams()).thenReturn(new TcpHealthParams());
@@ -62,6 +66,11 @@ public class ClusterTest {
         cluster.setDefCkport(80);
         cluster.setDefIPPort(8080);
         cluster.init();
+    }
+    
+    @After
+    public void tearDown() {
+        cluster.destroy();
     }
     
     @Test

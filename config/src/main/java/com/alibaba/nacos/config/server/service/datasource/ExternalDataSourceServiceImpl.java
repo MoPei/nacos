@@ -17,7 +17,7 @@
 package com.alibaba.nacos.config.server.service.datasource;
 
 import com.alibaba.nacos.common.utils.ConvertUtils;
-import com.alibaba.nacos.common.utils.IPUtil;
+import com.alibaba.nacos.common.utils.InternetAddressUtil;
 import com.alibaba.nacos.common.utils.StringUtils;
 import com.alibaba.nacos.config.server.monitor.MetricsMonitor;
 import com.alibaba.nacos.config.server.utils.ConfigExecutor;
@@ -54,6 +54,8 @@ public class ExternalDataSourceServiceImpl implements DataSourceService {
     
     private static final int TRANSACTION_QUERY_TIMEOUT = 5;
     
+    private static final int DB_MASTER_SELECT_THRESHOLD = 1;
+
     private static final String DB_LOAD_ERROR_MSG = "[db-load-error]load jdbc.properties error";
     
     private List<HikariDataSource> dataSourceList = new ArrayList<>();
@@ -91,8 +93,8 @@ public class ExternalDataSourceServiceImpl implements DataSourceService {
         
         //  Database health check
         
-        testJtList = new ArrayList<JdbcTemplate>();
-        isHealthList = new ArrayList<Boolean>();
+        testJtList = new ArrayList<>();
+        isHealthList = new ArrayList<>();
         
         tm = new DataSourceTransactionManager();
         tjt = new TransactionTemplate(tm);
@@ -103,11 +105,13 @@ public class ExternalDataSourceServiceImpl implements DataSourceService {
             try {
                 reload();
             } catch (IOException e) {
-                e.printStackTrace();
+                FATAL_LOG.error("[ExternalDataSourceService] datasource reload error", e);
                 throw new RuntimeException(DB_LOAD_ERROR_MSG);
             }
-            
-            ConfigExecutor.scheduleConfigTask(new SelectMasterTask(), 10, 10, TimeUnit.SECONDS);
+
+            if (this.dataSourceList.size() > DB_MASTER_SELECT_THRESHOLD) {
+                ConfigExecutor.scheduleConfigTask(new SelectMasterTask(), 10, 10, TimeUnit.SECONDS);
+            }
             ConfigExecutor.scheduleConfigTask(new CheckDbHealthTask(), 10, 10, TimeUnit.SECONDS);
         }
     }
@@ -115,16 +119,37 @@ public class ExternalDataSourceServiceImpl implements DataSourceService {
     @Override
     public synchronized void reload() throws IOException {
         try {
-            dataSourceList = new ExternalDataSourceProperties()
+            final List<JdbcTemplate> testJtListNew = new ArrayList<JdbcTemplate>();
+            final List<Boolean> isHealthListNew = new ArrayList<Boolean>();
+    
+            List<HikariDataSource> dataSourceListNew = new ExternalDataSourceProperties()
                     .build(EnvUtil.getEnvironment(), (dataSource) -> {
                         JdbcTemplate jdbcTemplate = new JdbcTemplate();
                         jdbcTemplate.setQueryTimeout(queryTimeout);
                         jdbcTemplate.setDataSource(dataSource);
-                        testJtList.add(jdbcTemplate);
-                        isHealthList.add(Boolean.TRUE);
+                        testJtListNew.add(jdbcTemplate);
+                        isHealthListNew.add(Boolean.TRUE);
                     });
+    
+            final List<HikariDataSource> dataSourceListOld = dataSourceList;
+            final List<JdbcTemplate> testJtListOld = testJtList;
+            dataSourceList = dataSourceListNew;
+            testJtList = testJtListNew;
+            isHealthList = isHealthListNew;
             new SelectMasterTask().run();
             new CheckDbHealthTask().run();
+            
+            //close old datasource.
+            if (dataSourceListOld != null && !dataSourceListOld.isEmpty()) {
+                for (HikariDataSource dataSource : dataSourceListOld) {
+                    dataSource.close();
+                }
+            }
+            if (testJtListOld != null && !testJtListOld.isEmpty()) {
+                for (JdbcTemplate oldJdbc : testJtListOld) {
+                    oldJdbc.setDataSource(null);
+                }
+            }
         } catch (RuntimeException e) {
             FATAL_LOG.error(DB_LOAD_ERROR_MSG, e);
             throw new IOException(e);
@@ -179,10 +204,10 @@ public class ExternalDataSourceServiceImpl implements DataSourceService {
             if (!isHealthList.get(i)) {
                 if (i == masterIndex) {
                     // The master is unhealthy.
-                    return "DOWN:" + IPUtil.getIPFromString(dataSourceList.get(i).getJdbcUrl());
+                    return "DOWN:" + InternetAddressUtil.getIPFromString(dataSourceList.get(i).getJdbcUrl());
                 } else {
                     // The slave  is unhealthy.
-                    return "WARN:" + IPUtil.getIPFromString(dataSourceList.get(i).getJdbcUrl());
+                    return "WARN:" + InternetAddressUtil.getIPFromString(dataSourceList.get(i).getJdbcUrl());
                 }
             }
         }
@@ -215,7 +240,7 @@ public class ExternalDataSourceServiceImpl implements DataSourceService {
                     masterIndex = index;
                     break;
                 } catch (DataAccessException e) { // read only
-                    e.printStackTrace(); // TODO remove
+                    FATAL_LOG.warn("[master-db] master db access error", e);
                 }
             }
             
@@ -244,10 +269,10 @@ public class ExternalDataSourceServiceImpl implements DataSourceService {
                 } catch (DataAccessException e) {
                     if (i == masterIndex) {
                         FATAL_LOG.error("[db-error] master db {} down.",
-                                IPUtil.getIPFromString(dataSourceList.get(i).getJdbcUrl()));
+                                InternetAddressUtil.getIPFromString(dataSourceList.get(i).getJdbcUrl()));
                     } else {
                         FATAL_LOG.error("[db-error] slave db {} down.",
-                                IPUtil.getIPFromString(dataSourceList.get(i).getJdbcUrl()));
+                                InternetAddressUtil.getIPFromString(dataSourceList.get(i).getJdbcUrl()));
                     }
                     isHealthList.set(i, Boolean.FALSE);
                     

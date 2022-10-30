@@ -23,7 +23,7 @@ import com.alibaba.nacos.naming.misc.Loggers;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.StringUtils;
+import com.alibaba.nacos.common.utils.StringUtils;
 import org.springframework.util.Assert;
 
 import java.util.ArrayList;
@@ -49,7 +49,7 @@ public class Cluster extends com.alibaba.nacos.api.naming.pojo.Cluster implement
     private static final long serialVersionUID = 8940123791150907510L;
     
     /**
-     * a addition for same site routing, can group multiple sites into a region, like Hangzhou, Shanghai, etc.
+     * an addition for same site routing, can group multiple sites into a region, like Hangzhou, Shanghai, etc.
      */
     private String sitegroup = StringUtils.EMPTY;
     
@@ -80,7 +80,7 @@ public class Cluster extends com.alibaba.nacos.api.naming.pojo.Cluster implement
     /**
      * Create a cluster.
      *
-     * <p>the cluster name cannot be null, and only the arabic numerals, letters and endashes are allowed.
+     * <p>the cluster name cannot be null, and only the arabic numerals, letters and underline are allowed.
      *
      * @param clusterName the cluster name
      * @param service     the service to which the current cluster belongs
@@ -245,9 +245,9 @@ public class Cluster extends com.alibaba.nacos.api.naming.pojo.Cluster implement
             oldIpMap.put(ip.getDatumKey(), ip);
         }
         
-        List<Instance> updatedIPs = updatedIps(ips, oldIpMap.values());
-        if (updatedIPs.size() > 0) {
-            for (Instance ip : updatedIPs) {
+        List<Instance> updatedIps = updatedIps(ips, oldIpMap.values());
+        if (updatedIps.size() > 0) {
+            for (Instance ip : updatedIps) {
                 Instance oldIP = oldIpMap.get(ip.getDatumKey());
                 
                 // do not update the ip validation status of updated ips
@@ -265,8 +265,7 @@ public class Cluster extends com.alibaba.nacos.api.naming.pojo.Cluster implement
                 
                 if (ip.getWeight() != oldIP.getWeight()) {
                     // ip validation status updated
-                    Loggers.EVT_LOG.info("{} {SYNC} {IP-UPDATED} {}->{}", getService().getName(), oldIP.toString(),
-                            ip.toString());
+                    Loggers.EVT_LOG.info("{} {SYNC} {IP-UPDATED} {}->{}", getService().getName(), oldIP, ip);
                 }
             }
         }
@@ -275,7 +274,7 @@ public class Cluster extends com.alibaba.nacos.api.naming.pojo.Cluster implement
         if (newIPs.size() > 0) {
             Loggers.EVT_LOG
                     .info("{} {SYNC} {IP-NEW} cluster: {}, new ips size: {}, content: {}", getService().getName(),
-                            getName(), newIPs.size(), newIPs.toString());
+                            getName(), newIPs.size(), newIPs);
             
             for (Instance ip : newIPs) {
                 HealthCheckStatus.reset(ip);
@@ -287,7 +286,7 @@ public class Cluster extends com.alibaba.nacos.api.naming.pojo.Cluster implement
         if (deadIPs.size() > 0) {
             Loggers.EVT_LOG
                     .info("{} {SYNC} {IP-DEAD} cluster: {}, dead ips size: {}, content: {}", getService().getName(),
-                            getName(), deadIPs.size(), deadIPs.toString());
+                            getName(), deadIPs.size(), deadIPs);
             
             for (Instance ip : deadIPs) {
                 HealthCheckStatus.remv(ip);
@@ -309,7 +308,7 @@ public class Cluster extends com.alibaba.nacos.api.naming.pojo.Cluster implement
         Map<String, Instance> stringIpAddressMap = new ConcurrentHashMap<>(intersects.size());
         
         for (Instance instance : intersects) {
-            stringIpAddressMap.put(instance.getIp() + ":" + instance.getPort(), instance);
+            stringIpAddressMap.put(instance.toIpAddr(), instance);
         }
         
         Map<String, Integer> intersectMap = new ConcurrentHashMap<>(newInstance.size() + oldInstance.size());
@@ -317,19 +316,14 @@ public class Cluster extends com.alibaba.nacos.api.naming.pojo.Cluster implement
         Map<String, Instance> newInstancesMap = new ConcurrentHashMap<>(newInstance.size());
         
         for (Instance instance : oldInstance) {
-            if (stringIpAddressMap.containsKey(instance.getIp() + ":" + instance.getPort())) {
+            if (stringIpAddressMap.containsKey(instance.toIpAddr())) {
                 intersectMap.put(instance.toString(), 1);
             }
         }
         
         for (Instance instance : newInstance) {
-            if (stringIpAddressMap.containsKey(instance.getIp() + ":" + instance.getPort())) {
-                
-                if (intersectMap.containsKey(instance.toString())) {
-                    intersectMap.put(instance.toString(), 2);
-                } else {
-                    intersectMap.put(instance.toString(), 1);
-                }
+            if (stringIpAddressMap.containsKey(instance.toIpAddr())) {
+                intersectMap.put(instance.toString(), intersectMap.containsKey(instance.toString()) ? 2 : 1);
             }
             
             newInstancesMap.put(instance.toString(), instance);
@@ -339,11 +333,9 @@ public class Cluster extends com.alibaba.nacos.api.naming.pojo.Cluster implement
         for (Map.Entry<String, Integer> entry : intersectMap.entrySet()) {
             String key = entry.getKey();
             Integer value = entry.getValue();
-            
-            if (value == 1) {
-                if (newInstancesMap.containsKey(key)) {
-                    updatedInstancesMap.put(key, newInstancesMap.get(key));
-                }
+
+            if (value == 1 && newInstancesMap.containsKey(key)) {
+                updatedInstancesMap.put(key, newInstancesMap.get(key));
             }
         }
         
@@ -386,6 +378,7 @@ public class Cluster extends com.alibaba.nacos.api.naming.pojo.Cluster implement
     
     public void setDefCkport(int defCkport) {
         this.defCkport = defCkport;
+        super.setDefaultCheckPort(defCkport);
     }
     
     /**
@@ -446,7 +439,7 @@ public class Cluster extends com.alibaba.nacos.api.naming.pojo.Cluster implement
     /**
      * validate the current cluster.
      *
-     * <p>the cluster name cannot be null, and only the arabic numerals, letters and endashes are allowed.
+     * <p>the cluster name cannot be null, and only the arabic numerals, letters and underline are allowed.
      *
      * @throws IllegalArgumentException the service is null, or the cluster name is null, or the cluster name is
      *                                  illegal

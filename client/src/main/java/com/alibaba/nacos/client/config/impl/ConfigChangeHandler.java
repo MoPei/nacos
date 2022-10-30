@@ -16,15 +16,17 @@
 
 package com.alibaba.nacos.client.config.impl;
 
+import com.alibaba.nacos.api.config.ConfigChangeItem;
 import com.alibaba.nacos.api.config.listener.ConfigChangeParser;
+import com.alibaba.nacos.common.spi.NacosServiceLoader;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-import java.util.ServiceLoader;
 
 /**
  * ConfigChangeHandler.
@@ -39,9 +41,9 @@ public class ConfigChangeHandler {
     }
     
     private ConfigChangeHandler() {
-        this.parserList = new LinkedList<ConfigChangeParser>();
+        this.parserList = new LinkedList<>();
         
-        ServiceLoader<ConfigChangeParser> loader = ServiceLoader.load(ConfigChangeParser.class);
+        Collection<ConfigChangeParser> loader = NacosServiceLoader.load(ConfigChangeParser.class);
         Iterator<ConfigChangeParser> itr = loader.iterator();
         while (itr.hasNext()) {
             this.parserList.add(itr.next());
@@ -64,7 +66,7 @@ public class ConfigChangeHandler {
      * @return change data map
      * @throws IOException io exception
      */
-    public Map parseChangeData(String oldContent, String newContent, String type) throws IOException {
+    public Map<String, ConfigChangeItem> parseChangeData(String oldContent, String newContent, String type) throws IOException {
         for (ConfigChangeParser changeParser : this.parserList) {
             if (changeParser.isResponsibleFor(type)) {
                 return changeParser.doParse(oldContent, newContent, type);

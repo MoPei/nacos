@@ -38,6 +38,11 @@ public class Constants {
     public static final String BASE_DIR = "config-data";
     
     /**
+     * The derby base dir.
+     */
+    public static final String DERBY_BASE_DIR = "derby-data";
+    
+    /**
      * Back up file directory in server side.
      *
      */
@@ -126,6 +131,8 @@ public class Constants {
     public static final String LISTENER_CONTROLLER_PATH = BASE_PATH + "/listener";
     
     public static final String NAMESPACE_CONTROLLER_PATH = BASE_PATH + "/namespaces";
+    
+    public static final String METRICS_CONTROLLER_PATH = BASE_PATH + "/metrics";
     
     public static final String ENCODE = "UTF-8";
     
@@ -267,4 +274,12 @@ public class Constants {
      * Specifies that reads wait without timeout.
      */
     public static final String EXTEND_NEED_READ_UNTIL_HAVE_DATA = "00--0-read-join-0--00";
+
+    public static final String CONFIG_EXPORT_ITEM_FILE_SEPARATOR = "/";
+    
+    public static final String CONFIG_EXPORT_METADATA = ".meta.yml";
+    
+    public static final String CONFIG_EXPORT_METADATA_NEW = ".metadata.yml";
+    
+    public static final int LIMIT_ERROR_CODE = 429;
 }
