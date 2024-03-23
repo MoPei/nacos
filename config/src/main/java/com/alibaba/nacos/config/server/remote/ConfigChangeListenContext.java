@@ -143,6 +143,9 @@ public class ConfigChangeListenContext {
             Set<String> connectionIds = groupKeyContext.get(groupKey.getKey());
             if (CollectionUtils.isNotEmpty(connectionIds)) {
                 connectionIds.remove(connectionId);
+                if (connectionIds.isEmpty()) {
+                    groupKeyContext.remove(groupKey.getKey());
+                }
             } else {
                 groupKeyContext.remove(groupKey.getKey());
             }
@@ -171,6 +174,15 @@ public class ConfigChangeListenContext {
     public String getListenKeyMd5(String connectionId, String groupKey) {
         Map<String, String> groupKeyContexts = connectionIdContext.get(connectionId);
         return groupKeyContexts == null ? null : groupKeyContexts.get(groupKey);
+    }
+    
+    /**
+     * get connection count.
+     *
+     * @return count of long connections.
+     */
+    public int getConnectionCount() {
+        return connectionIdContext.size();
     }
     
 }

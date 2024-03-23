@@ -76,7 +76,7 @@ public class UdpConnectorTest {
         DatagramSocket oldSocket = (DatagramSocket) ReflectionTestUtils.getField(udpConnector, "udpSocket");
         ReflectionTestUtils.setField(udpConnector, "udpSocket", udpSocket);
         doAnswer(invocationOnMock -> {
-            TimeUnit.MINUTES.sleep(1);
+            TimeUnit.SECONDS.sleep(3);
             return null;
         }).when(udpSocket).receive(any(DatagramPacket.class));
         oldSocket.close();
@@ -84,13 +84,14 @@ public class UdpConnectorTest {
     }
     
     @After
-    public void tearDown() {
+    public void tearDown() throws InterruptedException {
         udpConnector.shutdown();
+        TimeUnit.SECONDS.sleep(1);
     }
     
     @Test
     public void testContainAck() {
-        when(ackMap.containsKey(Mockito.anyString())).thenReturn(true);
+        when(ackMap.containsKey("1111")).thenReturn(true);
         Assert.assertTrue(udpConnector.containAck("1111"));
     }
     
