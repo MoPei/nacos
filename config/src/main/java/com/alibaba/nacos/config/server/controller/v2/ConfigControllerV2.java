@@ -27,6 +27,7 @@ import com.alibaba.nacos.common.utils.Pair;
 import com.alibaba.nacos.common.utils.StringUtils;
 import com.alibaba.nacos.config.server.constant.Constants;
 import com.alibaba.nacos.config.server.controller.ConfigServletInner;
+import com.alibaba.nacos.config.server.enums.ApiVersionEnum;
 import com.alibaba.nacos.config.server.model.ConfigInfo;
 import com.alibaba.nacos.config.server.model.ConfigRequestInfo;
 import com.alibaba.nacos.config.server.paramcheck.ConfigBlurSearchHttpParamExtractor;
@@ -105,7 +106,7 @@ public class ConfigControllerV2 {
         ParamUtils.checkParamV2(tag);
         final String clientIp = RequestUtil.getRemoteIp(request);
         String isNotify = request.getHeader("notify");
-        inner.doGetConfig(request, response, dataId, group, namespaceId, tag, isNotify, clientIp, true);
+        inner.doGetConfig(request, response, dataId, group, namespaceId, tag, isNotify, clientIp, ApiVersionEnum.V2);
     }
     
     /**
@@ -118,9 +119,13 @@ public class ConfigControllerV2 {
     public Result<Boolean> publishConfig(ConfigForm configForm, HttpServletRequest request) throws NacosException {
         // check required field
         configForm.validate();
-        // encrypted
-        Pair<String, String> pair = EncryptionHandler.encryptHandler(configForm.getDataId(), configForm.getContent());
-        configForm.setContent(pair.getSecond());
+        String encryptedDataKeyFinal = configForm.getEncryptedDataKey();
+        if (StringUtils.isBlank(encryptedDataKeyFinal)) {
+            // encrypted
+            Pair<String, String> pair = EncryptionHandler.encryptHandler(configForm.getDataId(), configForm.getContent());
+            configForm.setContent(pair.getSecond());
+            encryptedDataKeyFinal = pair.getFirst();
+        }
         //fix issue #9783
         configForm.setNamespaceId(NamespaceUtil.processNamespaceParameter(configForm.getNamespaceId()));
         // check param
@@ -134,16 +139,15 @@ public class ConfigControllerV2 {
         if (!ConfigType.isValidType(configForm.getType())) {
             configForm.setType(ConfigType.getDefaultType().getType());
         }
-    
+        
         ConfigRequestInfo configRequestInfo = new ConfigRequestInfo();
         configRequestInfo.setSrcIp(RequestUtil.getRemoteIp(request));
+        configRequestInfo.setSrcType(Constants.HTTP);
         configRequestInfo.setRequestIpApp(RequestUtil.getAppName(request));
         configRequestInfo.setBetaIps(request.getHeader("betaIps"));
         configRequestInfo.setCasMd5(request.getHeader("casMd5"));
-    
-        String encryptedDataKey = pair.getFirst();
-    
-        return Result.success(configOperationService.publishConfig(configForm, configRequestInfo, encryptedDataKey));
+        
+        return Result.success(configOperationService.publishConfig(configForm, configRequestInfo, encryptedDataKeyFinal));
     }
     
     /**
@@ -166,7 +170,7 @@ public class ConfigControllerV2 {
         
         String clientIp = RequestUtil.getRemoteIp(request);
         String srcUser = RequestUtil.getSrcUserName(request);
-        return Result.success(configOperationService.deleteConfig(dataId, group, namespaceId, tag, clientIp, srcUser));
+        return Result.success(configOperationService.deleteConfig(dataId, group, namespaceId, tag, clientIp, srcUser, Constants.HTTP));
     }
     
     /**

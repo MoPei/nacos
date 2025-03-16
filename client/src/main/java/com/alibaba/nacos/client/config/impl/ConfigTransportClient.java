@@ -53,7 +53,7 @@ public abstract class ConfigTransportClient {
     
     ScheduledExecutorService executor;
     
-    final ServerListManager serverListManager;
+    final ConfigServerListManager serverListManager;
     
     final Properties properties;
     
@@ -67,7 +67,7 @@ public abstract class ConfigTransportClient {
         securityProxy.shutdown();
     }
     
-    public ConfigTransportClient(NacosClientProperties properties, ServerListManager serverListManager) {
+    public ConfigTransportClient(NacosClientProperties properties, ConfigServerListManager serverListManager) {
         
         String encodeTmp = properties.getProperty(PropertyKeyConst.ENCODE);
         if (StringUtils.isBlank(encodeTmp)) {
@@ -79,7 +79,7 @@ public abstract class ConfigTransportClient {
         this.tenant = properties.getProperty(PropertyKeyConst.NAMESPACE);
         this.serverListManager = serverListManager;
         this.properties = properties.asProperties();
-        this.securityProxy = new SecurityProxy(serverListManager.getServerUrls(),
+        this.securityProxy = new SecurityProxy(serverListManager,
                 ConfigHttpClientManager.getInstance().getNacosRestTemplate());
     }
     
@@ -136,6 +136,10 @@ public abstract class ConfigTransportClient {
         startInternal();
     }
     
+    public void reLogin() {
+        securityProxy.reLogin();
+    }
+    
     /**
      * start client inner.
      *
@@ -175,8 +179,10 @@ public abstract class ConfigTransportClient {
     
     /**
      * listen change .
+     *
+     * @throws NacosException nacos exception throws, should retry.
      */
-    public abstract void executeConfigListen();
+    public abstract void executeConfigListen() throws NacosException;
     
     /**
      * remove cache implements.
